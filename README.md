@@ -134,11 +134,11 @@ ZQuota 直接读取 ZCode 的本地登录凭据，并调用额度接口获取使
 
 1. **读取凭据**
 
-   从 `~/.zcode/v2/credentials.json` 读取 `oauth:bigmodel:access_token`。
+   优先从 `~/.zcode/v2/config.json` 读取 `builtin:bigmodel-coding-plan` provider 的明文 `apiKey`（provider 配置，结构稳定、无解密依赖）。
 
-2. **本地解密**
+2. **回退解密**
 
-   对 `enc:v1:` 格式的凭据执行 AES-256-GCM 解密。
+   `config.json` 中无可用 apiKey 时，回退读取 `~/.zcode/v2/credentials.json` 的 `oauth:bigmodel:access_token`，对 `enc:v1:` 格式执行 AES-256-GCM 解密。
 
    密钥来源为以下两种方式之一：
 
@@ -154,7 +154,7 @@ ZQuota 直接读取 ZCode 的本地登录凭据，并调用额度接口获取使
 
 4. **解析额度数据**
 
-   根据 `TOKENS_LIMIT` 的重置时间排序映射 5 小时窗口和周窗口，并根据 `TIME_LIMIT` 数据映射 MCP 工具剩余次数。
+   `TOKENS_LIMIT` 窗口按语义字段映射：`unit=3, number=5` 为 5 小时窗口，`unit=6` 为周窗口；语义字段缺失时回退为按重置时间排序。`TIME_LIMIT` 数据映射 MCP 工具剩余次数。
 
 ### 数据安全
 

@@ -35,8 +35,18 @@ function decrypt(blob) {
   return Buffer.concat([d.update(Buffer.from(ctB64, "base64url")), d.final()]).toString();
 }
 
+// 凭据双源：优先 config.json 的 provider 明文 apiKey，回退 credentials.json 解密（与 App 的 ZCodeQuotaClient 一致）
+function loadToken() {
+  try {
+    const cfg = JSON.parse(readFileSync(`${HOME}/.zcode/v2/config.json`, "utf8"));
+    const apiKey = cfg?.provider?.["builtin:bigmodel-coding-plan"]?.options?.apiKey;
+    if (apiKey) return apiKey;
+  } catch {}
+  return decrypt(JSON.parse(readFileSync(`${HOME}/.zcode/v2/credentials.json`, "utf8"))["oauth:bigmodel:access_token"]);
+}
+
 async function fetchQuota() {
-  const token = decrypt(JSON.parse(readFileSync(`${HOME}/.zcode/v2/credentials.json`, "utf8"))["oauth:bigmodel:access_token"]);
+  const token = loadToken();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 10000);
   const r = await fetch("https://api.z.ai/api/monitor/usage/quota/limit", {
@@ -45,10 +55,18 @@ async function fetchQuota() {
   clearTimeout(timer);
   const body = await r.json();
   if (body.code !== 200) throw new Error(`接口返回 ${body.code} ${body.msg}`);
-  const windows = body.data.limits
-    .filter((l) => l.type === "TOKENS_LIMIT")
-    .map((l) => ({ left: Math.round(100 - l.percentage), reset: l.nextResetTime }))
-    .sort((a, b) => a.reset - b.reset);
+  // 窗口语义映射（与 App 的 makeSnapshot 一致）：unit=3&number=5 → 5h、unit=6 → 周；
+  // 字段缺失回退按 nextResetTime 排序（周窗临近重置时排序会认错窗口，语义优先）
+  const tokens = body.data.limits.filter((l) => l.type === "TOKENS_LIMIT");
+  let fiveHour = tokens.find((l) => l.unit === 3 && (l.number ?? 5) === 5);
+  let weekly = tokens.find((l) => l.unit === 6);
+  if (!fiveHour || !weekly) {
+    const sorted = [...tokens].sort((a, b) => (a.nextResetTime ?? 0) - (b.nextResetTime ?? 0));
+    fiveHour = fiveHour ?? sorted[0];
+    weekly = weekly ?? (sorted.length >= 2 ? sorted[1] : sorted[0]);
+  }
+  const windows = [fiveHour, weekly].filter(Boolean)
+    .map((l) => ({ left: Math.round(100 - l.percentage), reset: l.nextResetTime }));
   return { ts: Date.now(), windows };
 }
 
