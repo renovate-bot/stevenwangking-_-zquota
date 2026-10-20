@@ -127,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RateLimitStoreDelegate
         hudVisibilityMenuItem = visibilityItem
 
         let touchBarItem = NSMenuItem(
-            title: "在 ZCode 前台时显示",
+            title: "显示在 Touch Bar",
             action: #selector(toggleTouchBarDisplay(_:)),
             keyEquivalent: ""
         )
